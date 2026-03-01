@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}{{ case.case_name }} — CyberTriage{% endblock %}
+{% block page_title %}{{ case.case_name }}{% endblock %}
+{% block page_subtitle %}Case {{ case.id }} · {{ case.officer_name }}{% endblock %}
+
+{% block topbar_actions %}
+{% if case.status == 'completed' %}
+<a href="{{ url_for('download_report', case_id=case.id) }}" class="btn btn-primary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+    Download Report
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<!-- Case Status Bar -->
+<div class="case-status-bar threat-{{ case.threat_level | lower }}">
+    <div class="status-info">
+        <span class="status-badge status-{{ case.status }}">{{ case.status | title }}</span>
+        <span class="threat-badge rag-{{ case.threat_level | lower }}">{{ case.threat_level }} THREAT</span>
+    </div>
+    <div class="status-summary">{{ threat_summary }}</div>
+</div>
+
+<!-- Scan Progress (shown during active scan) -->
+{% if case.status in ['pending', 'scanning'] %}
+<div class="card scan-progress-card" id="scanProgressCard">
+    <div class="card-body">
+        {% if case.status == 'pending' %}
+        <div class="scan-start-prompt">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="scan-icon pulse">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <h3>Ready to Scan</h3>
+            <p>Target: <code>{{ case.scan_target }}</code></p>
+            <p>Click the button below to begin the automated forensic analysis.</p>
+            <button onclick="startScan('{{ case.id }}')" class="btn btn-primary btn-lg" id="startScanBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                Start Forensic Scan
+            </button>
+        </div>
+        {% endif %}
+
+        <div id="scanProgress" style="{% if case.status == 'pending' %}display:none{% endif %}">
+            <div class="scan-steps">
+                <div class="scan-step" id="step1"><span class="step-num">1</span> Scanning Files</div>
+                <div class="scan-step" id="step2"><span class="step-num">2</span> Computing Hashes</div>
+                <div class="scan-step" id="step3"><span class="step-num">3</span> AI Analysis</div>
+                <div class="scan-step" id="step4"><span class="step-num">4</span> Classifying</div>
+                <div class="scan-step" id="step5"><span class="step-num">5</span> Timeline</div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+            <div class="progress-info">
+                <span id="progressText">Initializing scan...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Case Info + RAG Summary -->
+<div class="case-grid">
+    <div class="card">
+        <div class="card-header">
+            <h2>Case Details</h2>
+        </div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <span class="detail-label">Case ID</span>
+                    <span class="detail-value"><code>{{ case.id }}</code></span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Officer</span>
+                    <span class="detail-value">{{ case.officer_name }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Badge #</span>
+                    <span class="detail-value">{{ case.badge_number or 'N/A' }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Department</span>
+                    <span class="detail-value">{{ case.department or 'N/A' }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Evidence Source</span>
+                    <span class="detail-value"><code>{{ case.scan_target }}</code></span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Type</span>
+                    <span class="detail-value">{{ case.scan_type | replace('_', ' ') | title }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Created</span>
+                    <span class="detail-value">{{ case.created_at | format_datetime }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Completed</span>
+                    <span class="detail-value">{{ case.completed_at | format_datetime if case.completed_at else 'In
+                        Progress' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Evidence Summary</h2>
+        </div>
+        <div class="card-body">
+            <div class="rag-summary">
+                <div class="rag-item red">
+                    <span class="rag-count-large">{{ case.red_count or 0 }}</span>
+                    <span class="rag-label">High Priority</span>
+                    <span class="rag-desc">Requires immediate attention</span>
+                </div>
+                <div class="rag-item amber">
+                    <span class="rag-count-large">{{ case.amber_count or 0 }}</span>
+                    <span class="rag-label">Review Needed</span>
+                    <span class="rag-desc">Flagged for further review</span>
+                </div>
+                <div class="rag-item green">
+                    <span class="rag-count-large">{{ case.green_count or 0 }}</span>
+                    <span class="rag-label">Clear</span>
+                    <span class="rag-desc">No immediate concerns</span>
+                </div>
+            </div>
+            <div class="rag-total">
+                <span>Total Files Analyzed: <strong>{{ case.total_files or 0 }}</strong></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+{% if case.status == 'completed' %}
+<div class="quick-actions">
+    <a href="{{ url_for('evidence_view', case_id=case.id) }}" class="action-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <span>View Evidence</span>
+    </a>
+    <a href="{{ url_for('timeline_view', case_id=case.id) }}" class="action-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <span>View Timeline</span>
+    </a>
+    <a href="{{ url_for('report_view', case_id=case.id) }}" class="action-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14,2 14,8 20,8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+        <span>View Report</span>
+    </a>
+    <a href="{{ url_for('download_report', case_id=case.id) }}" class="action-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        <span>Export PDF</span>
+    </a>
+</div>
+{% endif %}
+
+<!-- Evidence Preview (top RED items) -->
+{% if evidence %}
+<div class="card">
+    <div class="card-header">
+        <h2>Priority Evidence</h2>
+        <a href="{{ url_for('evidence_view', case_id=case.id) }}" class="btn btn-sm btn-outline">View All</a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Priority</th>
+                        <th>File Name</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Confidence</th>
+                        <th>Analysis</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in evidence[:10] %}
+                    <tr>
+                        <td><span class="rag-badge rag-{{ item.classification | lower }}">{{ item.classification
+                                }}</span></td>
+                        <td><strong>{{ item.file_name }}</strong></td>
+                        <td>{{ item.file_extension or 'N/A' }}</td>
+                        <td>{{ item.file_size | format_size }}</td>
+                        <td>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill rag-bg-{{ item.classification | lower }}"
+                                    style="width: {{ (item.confidence_score or 0) * 100 }}%"></div>
+                                <span>{{ ((item.confidence_score or 0) * 100) | int }}%</span>
+                            </div>
+                        </td>
+                        <td class="analysis-cell">{{ (item.ai_analysis or 'Pending analysis')[:100] }}{% if
+                            item.ai_analysis and item.ai_analysis|length > 100 %}...{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Chain of Custody -->
+{% if chain_of_custody %}
+<div class="card">
+    <div class="card-header">
+        <h2>Chain of Custody</h2>
+    </div>
+    <div class="card-body">
+        <div class="activity-list">
+            {% for entry in chain_of_custody %}
+            <div class="activity-item">
+                <div class="activity-dot"></div>
+                <div class="activity-content">
+                    <span class="activity-action">{{ entry.action }}</span>
+                    <span class="activity-details">{{ entry.details }} — {{ entry.performed_by }}</span>
+                    <span class="activity-time">{{ entry.timestamp | format_datetime }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Delete Case -->
+<div class="card card-danger">
+    <div class="card-body">
+        <div class="danger-zone">
+            <div>
+                <h3>Delete Case</h3>
+                <p>Permanently remove this case and all associated evidence data.</p>
+            </div>
+            <form method="POST" action="{{ url_for('delete_case', case_id=case.id) }}"
+                onsubmit="return confirm('Are you sure you want to delete this case? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger">Delete Case</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    {% if case.status in ['pending', 'scanning'] %}
+    const caseId = '{{ case.id }}';
+    {% endif %}
+</script>
+{% endblock %}

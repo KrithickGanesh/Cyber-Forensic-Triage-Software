@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Evidence — {{ case.case_name }}{% endblock %}
+{% block page_title %}Evidence Gallery{% endblock %}
+{% block page_subtitle %}{{ case.case_name }} · {{ evidence | length }} items{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('case_detail', case_id=case.id) }}" class="btn btn-outline">Back to Case</a>
+{% endblock %}
+
+{% block content %}
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <a href="{{ url_for('evidence_view', case_id=case.id, filter='all') }}"
+        class="filter-btn {% if current_filter == 'all' %}active{% endif %}">
+        All <span class="filter-count">{{ evidence | length }}</span>
+    </a>
+    <a href="{{ url_for('evidence_view', case_id=case.id, filter='red') }}"
+        class="filter-btn filter-red {% if current_filter == 'red' %}active{% endif %}">
+        High Priority
+    </a>
+    <a href="{{ url_for('evidence_view', case_id=case.id, filter='amber') }}"
+        class="filter-btn filter-amber {% if current_filter == 'amber' %}active{% endif %}">
+        Review Needed
+    </a>
+    <a href="{{ url_for('evidence_view', case_id=case.id, filter='green') }}"
+        class="filter-btn filter-green {% if current_filter == 'green' %}active{% endif %}">
+        Clear
+    </a>
+</div>
+
+<!-- Evidence Cards -->
+{% if evidence %}
+<div class="evidence-grid">
+    {% for item in evidence %}
+    <div class="evidence-card rag-border-{{ item.classification | lower }}">
+        <div class="evidence-header">
+            <span class="rag-badge rag-{{ item.classification | lower }}">{{ item.classification }}</span>
+            <span class="confidence-badge">{{ ((item.confidence_score or 0) * 100)|int }}% confidence</span>
+        </div>
+        <div class="evidence-body">
+            <h3 class="evidence-filename" title="{{ item.file_name }}">{{ item.file_name }}</h3>
+            <div class="evidence-meta">
+                <span>{{ item.file_extension or 'unknown' }}</span>
+                <span>{{ item.file_size | format_size }}</span>
+            </div>
+            {% if item.flags %}
+            <div class="evidence-flags">
+                {% for flag in item.flags | parse_flags %}
+                <span class="flag-tag">{{ flag | replace('_', ' ') }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if item.ai_analysis %}
+            <p class="evidence-analysis">{{ item.ai_analysis[:200] }}{% if item.ai_analysis|length > 200 %}...{% endif
+                %}</p>
+            {% endif %}
+        </div>
+        <div class="evidence-footer">
+            <span class="evidence-hash" title="{{ item.sha256_hash }}">SHA-256: {{ (item.sha256_hash or 'N/A')[:20]
+                }}...</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <h3>No Evidence Items</h3>
+    <p>{% if current_filter != 'all' %}No items match the "{{ current_filter }}" filter. <a
+            href="{{ url_for('evidence_view', case_id=case.id, filter='all') }}">View all</a>{% else %}Run a scan to
+        populate evidence items.{% endif %}</p>
+</div>
+{% endif %}
+{% endblock %}

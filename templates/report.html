@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Report — {{ case.case_name }}{% endblock %}
+{% block page_title %}Forensic Report Preview{% endblock %}
+{% block page_subtitle %}{{ case.case_name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('download_report', case_id=case.id) }}" class="btn btn-primary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+    Download PDF
+</a>
+<a href="{{ url_for('case_detail', case_id=case.id) }}" class="btn btn-outline">Back to Case</a>
+{% endblock %}
+
+{% block content %}
+<div class="report-preview">
+    <!-- Report Header -->
+    <div class="report-header">
+        <h1>CYBER FORENSIC TRIAGE REPORT</h1>
+        <p class="report-confidential">DIGITAL EVIDENCE ANALYSIS — CONFIDENTIAL</p>
+        <div class="report-divider"></div>
+    </div>
+
+    <!-- Case Info -->
+    <div class="report-section">
+        <h2>Case Information</h2>
+        <div class="report-grid">
+            <div><span class="label">Case ID:</span> {{ case.id }}</div>
+            <div><span class="label">Case Name:</span> {{ case.case_name }}</div>
+            <div><span class="label">Officer:</span> {{ case.officer_name }}</div>
+            <div><span class="label">Badge #:</span> {{ case.badge_number or 'N/A' }}</div>
+            <div><span class="label">Department:</span> {{ case.department or 'N/A' }}</div>
+            <div><span class="label">Date:</span> {{ case.created_at | format_datetime }}</div>
+            <div><span class="label">Evidence:</span> {{ case.scan_target }}</div>
+            <div><span class="label">Type:</span> {{ case.scan_type | replace('_', ' ') | title }}</div>
+        </div>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="report-section">
+        <h2>Executive Summary</h2>
+        <div class="report-summary-grid">
+            <div class="summary-item threat-{{ case.threat_level | lower }}">
+                <span class="summary-value">{{ case.threat_level }}</span>
+                <span class="summary-label">Overall Threat</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value">{{ case.total_files or 0 }}</span>
+                <span class="summary-label">Total Files</span>
+            </div>
+            <div class="summary-item red">
+                <span class="summary-value">{{ case.red_count or 0 }}</span>
+                <span class="summary-label">High Priority</span>
+            </div>
+            <div class="summary-item amber">
+                <span class="summary-value">{{ case.amber_count or 0 }}</span>
+                <span class="summary-label">Review Needed</span>
+            </div>
+            <div class="summary-item green">
+                <span class="summary-value">{{ case.green_count or 0 }}</span>
+                <span class="summary-label">Clear</span>
+            </div>
+        </div>
+        <p class="report-narrative">{{ threat_summary }}</p>
+    </div>
+
+    <!-- Evidence Table -->
+    {% if evidence %}
+    <div class="report-section">
+        <h2>Evidence Items</h2>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>File Name</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Priority</th>
+                    <th>SHA-256</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in evidence[:50] %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ item.file_name }}</td>
+                    <td>{{ item.file_extension or 'N/A' }}</td>
+                    <td>{{ item.file_size | format_size }}</td>
+                    <td><span class="rag-badge rag-{{ item.classification | lower }} small">{{ item.classification
+                            }}</span></td>
+                    <td class="hash-cell">{{ (item.sha256_hash or 'N/A')[:16] }}...</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Chain of Custody -->
+    {% if chain_of_custody %}
+    <div class="report-section">
+        <h2>Chain of Custody</h2>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Performed By</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in chain_of_custody %}
+                <tr>
+                    <td>{{ entry.timestamp | format_datetime }}</td>
+                    <td>{{ entry.action }}</td>
+                    <td>{{ entry.performed_by }}</td>
+                    <td>{{ entry.details }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="report-footer">
+        <div class="report-divider"></div>
+        <p>This report was generated by Cyber Forensic Triage Software.</p>
+        <p>Handle according to department evidence protocols.</p>
+    </div>
+</div>
+{% endblock %}

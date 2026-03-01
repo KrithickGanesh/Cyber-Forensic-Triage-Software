@@ -1,0 +1,8 @@
+Flask==3.1.0
+python-dotenv==1.1.0
+reportlab==4.4.0
+google-generativeai==0.8.5
+requests==2.32.3
+exifread==3.1.0
+python-magic-bin==0.4.14
+Werkzeug==3.1.3

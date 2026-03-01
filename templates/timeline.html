@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline — {{ case.case_name }}{% endblock %}
+{% block page_title %}Forensic Timeline{% endblock %}
+{% block page_subtitle %}{{ case.case_name }} · Chronological event analysis{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('case_detail', case_id=case.id) }}" class="btn btn-outline">Back to Case</a>
+{% endblock %}
+
+{% block content %}
+{% if events %}
+<div class="timeline-container">
+    <div class="timeline-line"></div>
+    {% for event in events %}
+    <div class="timeline-item severity-{{ event.severity | lower }}">
+        <div class="timeline-dot rag-dot-{{ event.severity | lower }}"></div>
+        <div class="timeline-card">
+            <div class="timeline-header">
+                <span class="timeline-type">{{ event.event_type | replace('_', ' ') | title }}</span>
+                <span class="rag-badge rag-{{ event.severity | lower }} small">{{ event.severity }}</span>
+            </div>
+            <p class="timeline-desc">{{ event.description }}</p>
+            <div class="timeline-meta">
+                <span class="timeline-file" title="{{ event.source_file }}">{{ event.source_file }}</span>
+                <span class="timeline-time">{{ event.timestamp | format_datetime }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <h3>No Timeline Events</h3>
+    <p>Timeline will be populated after a scan is completed.</p>
+</div>
+{% endif %}
+{% endblock %}
