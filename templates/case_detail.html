@@ -120,17 +120,17 @@
         </div>
         <div class="card-body">
             <div class="rag-summary">
-                <div class="rag-item red">
+                <div class="rag-item {% if case.red_count %}red{% else %}muted{% endif %}">
                     <span class="rag-count-large">{{ case.red_count or 0 }}</span>
                     <span class="rag-label">High Priority</span>
                     <span class="rag-desc">Requires immediate attention</span>
                 </div>
-                <div class="rag-item amber">
+                <div class="rag-item {% if case.amber_count %}amber{% else %}muted{% endif %}">
                     <span class="rag-count-large">{{ case.amber_count or 0 }}</span>
                     <span class="rag-label">Review Needed</span>
                     <span class="rag-desc">Flagged for further review</span>
                 </div>
-                <div class="rag-item green">
+                <div class="rag-item {% if case.green_count %}green{% else %}muted{% endif %}">
                     <span class="rag-count-large">{{ case.green_count or 0 }}</span>
                     <span class="rag-label">Clear</span>
                     <span class="rag-desc">No immediate concerns</span>
