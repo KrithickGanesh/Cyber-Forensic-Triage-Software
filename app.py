@@ -24,7 +24,7 @@ load_dotenv()
 # Import tools
 from tools.scanner import scan_directory
 from tools.hasher import compute_sha256
-from tools.analyzer import analyze_with_ai, heuristic_analysis, get_gemini_client
+from tools.analyzer import analyze_with_ai, heuristic_analysis, get_gemini_client, get_vt_result
 from tools.scorer import classify_file, get_overall_threat_level, get_threat_summary
 from tools.timeline import build_timeline, format_timeline_for_display
 from tools.reporter import generate_report
@@ -216,24 +216,38 @@ def run_scan(case_id, scan_target, officer_name):
             if gemini_model:
                 try:
                     file_info['ai_analysis'] = analyze_with_ai(file_info, gemini_model)
+                    # Add a small sleep to respect Free Tier rate limits (429 errors)
+                    time.sleep(2)
                 except Exception:
                     file_info['ai_analysis'] = heuristic_analysis(file_info)
             else:
                 file_info['ai_analysis'] = heuristic_analysis(file_info)
 
-            active_scans[case_id]['progress'] = 33 + int((i + 1) / total_files * 33)
+            active_scans[case_id]['progress'] = 33 + int((i + 1) / total_files * 30)
             active_scans[case_id]['current_file'] = file_info['file_name']
 
-        # Step 4: Score and classify
+        # Step 4: VirusTotal lookup (if API key provided)
+        vt_api_key = os.getenv('VIRUSTOTAL_API_KEY')
+        if vt_api_key:
+            active_scans[case_id]['step'] = 'VirusTotal Lookup'
+            active_scans[case_id]['step_number'] = 4
+            for i, file_info in enumerate(files):
+                if file_info.get('sha256_hash') and file_info['sha256_hash'] != 'HASH_ERROR':
+                    file_info['virustotal_result'] = get_vt_result(file_info['sha256_hash'])
+                active_scans[case_id]['progress'] = 63 + int((i + 1) / total_files * 10)
+        else:
+            active_scans[case_id]['progress'] = 73
+
+        # Step 5: Score and classify
         active_scans[case_id]['step'] = 'Classifying Evidence'
-        active_scans[case_id]['step_number'] = 4
+        active_scans[case_id]['step_number'] = 5
 
         red_count = 0
         amber_count = 0
         green_count = 0
 
         for i, file_info in enumerate(files):
-            classification, confidence, flags = classify_file(file_info)
+            classification, confidence, flags = classify_file(file_info, file_info.get('virustotal_result'))
             file_info['classification'] = classification
             file_info['confidence_score'] = confidence
             file_info['flags'] = flags
@@ -245,20 +259,37 @@ def run_scan(case_id, scan_target, officer_name):
             else:
                 green_count += 1
 
-            active_scans[case_id]['progress'] = 66 + int((i + 1) / total_files * 17)
+            active_scans[case_id]['progress'] = 73 + int((i + 1) / total_files * 10)
 
-        # Step 5: Generate timeline
+        # Step 6: Generate timeline
         active_scans[case_id]['step'] = 'Generating Timeline'
-        active_scans[case_id]['step_number'] = 5
+        active_scans[case_id]['step_number'] = 6
 
         timeline_events = build_timeline(files)
+
+        # Step 7: Extract forensic artifacts
+        active_scans[case_id]['step'] = 'Extracting Artifacts'
+        active_scans[case_id]['step_number'] = 7
+        
+        try:
+            artifacts = extract_artifacts(scan_target)
+            for artifact in artifacts:
+                timeline_events.append({
+                    'timestamp': artifact.get('timestamp') or datetime.now().isoformat(),
+                    'event_type': 'artifact_found',
+                    'description': artifact.get('description', 'Forensic artifact found'),
+                    'source_file': artifact.get('file_path', ''),
+                    'severity': artifact.get('severity', 'AMBER'),
+                })
+        except Exception as e:
+            log_audit('artifact_error', f'Error extracting artifacts for case {case_id}: {str(e)}', case_id)
 
         # Save to database
         for file_info in files:
             conn.execute('''
                 INSERT INTO evidence (case_id, file_path, file_name, file_type, file_extension,
-                    file_size, sha256_hash, classification, confidence_score, flags, ai_analysis)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    file_size, sha256_hash, classification, confidence_score, flags, ai_analysis, virustotal_result)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 case_id,
                 file_info.get('file_path', ''),
@@ -271,6 +302,7 @@ def run_scan(case_id, scan_target, officer_name):
                 file_info.get('confidence_score', 0.0),
                 json.dumps(file_info.get('flags', [])),
                 file_info.get('ai_analysis', ''),
+                json.dumps(file_info.get('virustotal_result')) if file_info.get('virustotal_result') else None,
             ))
 
         # Save timeline events

@@ -25,16 +25,48 @@ def get_gemini_client():
         return None
 
 
+import requests
+
+def get_vt_result(file_hash):
+    """
+    Look up a file hash on VirusTotal.
+    
+    Args:
+        file_hash: SHA-256 or MD5 hash
+    
+    Returns:
+        Dict with VT results or None
+    """
+    vt_api_key = os.getenv('VIRUSTOTAL_API_KEY')
+    if not vt_api_key:
+        return None
+    
+    url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
+    headers = {
+        "x-apikey": vt_api_key
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            stats = data.get('data', {}).get('attributes', {}).get('last_analysis_stats', {})
+            return {
+                'positives': stats.get('malicious', 0),
+                'total': sum(stats.values()),
+                'details': data
+            }
+        return None
+    except Exception:
+        return None
+
+
+import PIL.Image
+
 def analyze_with_ai(file_info, model=None):
     """
     Analyze file using Gemini AI for forensic assessment.
-    
-    Args:
-        file_info: Dict with file metadata
-        model: Gemini model instance
-    
-    Returns:
-        AI analysis string
+    Supports Gemini Vision for image files.
     """
     if model is None:
         model = get_gemini_client()
@@ -42,28 +74,55 @@ def analyze_with_ai(file_info, model=None):
     if model is None:
         return heuristic_analysis(file_info)
 
-    prompt = f"""You are a digital forensics expert. Analyze this file metadata and provide a brief forensic assessment.
-
+    file_path = file_info.get('file_path')
+    ext = file_info.get('file_extension', '').lower()
+    is_image = ext in {'.jpg', '.jpeg', '.png', '.webp'}
+    
+    # Base prompt for metadata analysis
+    prompt = f"""You are a digital forensics expert. Analyze this file and provide a forensic assessment.
 File: {file_info.get('file_name', 'unknown')}
 Type: {file_info.get('file_type', 'unknown')}
-Extension: {file_info.get('file_extension', '')}
 Size: {file_info.get('file_size', 0)} bytes
-Created: {file_info.get('created_at', 'unknown')}
-Modified: {file_info.get('modified_at', 'unknown')}
-Hidden: {file_info.get('is_hidden', False)}
 Path: {file_info.get('relative_path', 'unknown')}
+"""
 
-Provide a 2-3 sentence forensic assessment. Mention:
-1. Whether this file type is commonly associated with malicious activity
-2. Any suspicious indicators (hidden files, unusual locations, timestamp anomalies)
-3. Recommended action (flag for review / mark as safe / needs deeper analysis)
+    # If it's an image and small enough, use Gemini Vision
+    if is_image and file_path and os.path.exists(file_path) and file_info.get('file_size', 0) < 10 * 1024 * 1024:
+        vision_prompt = prompt + """
+[CRITICAL FORENSIC IMAGE ANALYSIS]
+This is an image file found on a suspect's device. You MUST analyze the VISUAL content:
+1. What exactly is depicted in this image?
+2. Are there any IDs, passwords, bank details, or sensitive text?
+3. Is this a screenshot of a chat, a system setting, or a web page?
+4. Flag any suspicious, criminal, or evidentiary items.
 
-Be concise and professional. Use plain language suitable for law enforcement officers."""
+Provide a 3-4 sentence forensic summary. Do NOT just analyze the filename; analyze the VISUAL pixels."""
+        
+        try:
+            print(f"[AI] Attempting Vision Analysis for: {file_info.get('file_name')}")
+            img = PIL.Image.open(file_path)
+            # Use a list to pass prompt and image
+            response = model.generate_content([vision_prompt, img])
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            # Log the error to your terminal so you can see it!
+            print(f"[ERROR] Gemini Vision failed for {file_info.get('file_name')}: {str(e)}")
+            # If it's a "Model not found" or similar, maybe the API version is different
+            pass
+
+    # Standard metadata prompt (Fallback or for non-images)
+    metadata_prompt = prompt + """
+Provide a 2-3 sentence forensic assessment based on this metadata. 
+1. Malicious associations for this file type/location.
+2. Suspicious indicators (hidden, timestamp anomalies).
+3. Recommended action (flag for review / mark as safe)."""
 
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(metadata_prompt)
         return response.text.strip()
     except Exception as e:
+        print(f"[ERROR] Gemini Metadata Analysis failed: {str(e)}")
         return heuristic_analysis(file_info)
 
 

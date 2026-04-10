@@ -111,10 +111,9 @@ def generate_report(case_data, evidence_items, timeline_events, chain_of_custody
         ['Case ID:', case_data.get('id', 'N/A'), 'Case Name:', case_data.get('case_name', 'N/A')],
         ['Officer:', case_data.get('officer_name', 'N/A'), 'Badge #:', case_data.get('badge_number', 'N/A')],
         ['Department:', case_data.get('department', 'N/A'), 'Date:', case_data.get('created_at', 'N/A')],
-        ['Scan Target:', case_data.get('scan_target', 'N/A'), 'Scan Type:', case_data.get('scan_type', 'N/A')],
     ]
     
-    case_table = Table(case_info_data, colWidths=[80, 170, 70, 170])
+    case_table = Table(case_info_data, colWidths=[80, 180, 70, 180])
     case_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
@@ -126,6 +125,22 @@ def generate_report(case_data, evidence_items, timeline_events, chain_of_custody
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(case_table)
+    
+    # Scan Target separately to allow more room for long paths
+    target_data = [
+        ['Scan Target:', Paragraph(case_data.get('scan_target', 'N/A'), styles['FieldValue'])],
+        ['Scan Type:', case_data.get('scan_type', 'N/A')],
+    ]
+    target_table = Table(target_data, colWidths=[80, 430])
+    target_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.Color(0.4, 0.4, 0.45)),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(target_table)
     elements.append(Spacer(1, 15))
     
     # ─── EXECUTIVE SUMMARY ───
@@ -264,15 +279,23 @@ def generate_report(case_data, evidence_items, timeline_events, chain_of_custody
         coc_header = ['Timestamp', 'Action', 'Performed By', 'Details']
         coc_data = [coc_header]
         
+        # Style for long details
+        detail_style = ParagraphStyle(
+            'DetailStyle',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=10,
+        )
+        
         for entry in chain_of_custody:
             coc_data.append([
                 str(entry.get('timestamp', 'N/A'))[:19],
                 entry.get('action', 'N/A'),
                 entry.get('performed_by', 'N/A'),
-                str(entry.get('details', 'N/A'))[:50],
+                Paragraph(str(entry.get('details', 'N/A')), detail_style),
             ])
         
-        coc_table = Table(coc_data, colWidths=[110, 100, 100, 135])
+        coc_table = Table(coc_data, colWidths=[110, 90, 90, 220])
         coc_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.1, 0.1, 0.15)),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -281,6 +304,7 @@ def generate_report(case_data, evidence_items, timeline_events, chain_of_custody
             ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.88, 0.88, 0.9)),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
         elements.append(coc_table)
     
