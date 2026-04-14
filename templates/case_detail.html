@@ -120,17 +120,20 @@
         </div>
         <div class="card-body">
             <div class="rag-summary">
-                <div class="rag-item {% if case.red_count %}red{% else %}muted{% endif %}">
+                <div class="rag-item {% if case.red_count %}red{% else %}muted{% endif %}" 
+                     data-tooltip="Immediate threat or critical artifact detected">
                     <span class="rag-count-large">{{ case.red_count or 0 }}</span>
                     <span class="rag-label">High Priority</span>
                     <span class="rag-desc">Requires immediate attention</span>
                 </div>
-                <div class="rag-item {% if case.amber_count %}amber{% else %}muted{% endif %}">
+                <div class="rag-item {% if case.amber_count %}amber{% else %}muted{% endif %}"
+                     data-tooltip="Suspicious item requiring manual review">
                     <span class="rag-count-large">{{ case.amber_count or 0 }}</span>
                     <span class="rag-label">Review Needed</span>
                     <span class="rag-desc">Flagged for further review</span>
                 </div>
-                <div class="rag-item {% if case.green_count %}green{% else %}muted{% endif %}">
+                <div class="rag-item {% if case.green_count %}green{% else %}muted{% endif %}"
+                     data-tooltip="Safe or common system file">
                     <span class="rag-count-large">{{ case.green_count or 0 }}</span>
                     <span class="rag-label">Clear</span>
                     <span class="rag-desc">No immediate concerns</span>
@@ -177,6 +180,31 @@
         </svg>
         <span>Export PDF</span>
     </a>
+    <a href="{{ url_for('chat_view', case_id=case.id) }}" class="action-card action-card-accent">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        <span>AI Interrogator</span>
+    </a>
+    <a href="{{ url_for('heatmap_view', case_id=case.id) }}" class="action-card action-card-accent">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span>Threat Heatmap</span>
+    </a>
+    <a href="{{ url_for('darkweb_view', case_id=case.id) }}" class="action-card action-card-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2"/>
+            <line x1="12" y1="2" x2="12" y2="6"/>
+            <line x1="12" y1="18" x2="12" y2="22"/>
+        </svg>
+        <span>Dark Web Scan</span>
+    </a>
 </div>
 {% endif %}
 
@@ -203,8 +231,12 @@
                 <tbody>
                     {% for item in evidence[:10] %}
                     <tr>
-                        <td><span class="rag-badge rag-{{ item.classification | lower }}">{{ item.classification
-                                }}</span></td>
+                        <td>
+                            <span class="rag-badge rag-{{ item.classification | lower }}"
+                                  data-tooltip="{% if item.classification == 'RED' %}Immediate threat detected{% elif item.classification == 'AMBER' %}Suspicious item requiring review{% else %}Safe file{% endif %}">
+                                {{ item.classification }}
+                            </span>
+                        </td>
                         <td><strong>{{ item.file_name }}</strong></td>
                         <td>{{ item.file_extension or 'N/A' }}</td>
                         <td>{{ item.file_size | format_size }}</td>

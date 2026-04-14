@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+
+{% block title %}Threat Heatmap — {{ case.case_name }}{% endblock %}
+{% block page_title %}Threat Heatmap{% endblock %}
+{% block page_subtitle %}Case {{ case.id }} · Interactive file system threat visualization{% endblock %}
+
+{% block head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+{% endblock %}
+
+{% block topbar_actions %}
+<div class="heatmap-controls">
+    <select id="heatmapColorBy" class="heatmap-select" onchange="updateVisualization()">
+        <option value="threat">Color by Threat Level</option>
+        <option value="size">Color by File Size</option>
+        <option value="type">Color by File Type</option>
+    </select>
+    <select id="heatmapFilter" class="heatmap-select" onchange="filterVisualization()">
+        <option value="all">Show All Files</option>
+        <option value="RED">RED Only</option>
+        <option value="AMBER">AMBER Only</option>
+        <option value="GREEN">GREEN Only</option>
+    </select>
+</div>
+<a href="{{ url_for('case_detail', case_id=case.id) }}" class="btn btn-outline">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <line x1="19" y1="12" x2="5" y2="12" />
+        <polyline points="12 19 5 12 12 5" />
+    </svg>
+    Back to Case
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Legend -->
+<div class="heatmap-legend">
+    <div class="legend-item">
+        <span class="legend-color" style="background: #ef4444;"></span>
+        <span>RED — High Priority</span>
+    </div>
+    <div class="legend-item">
+        <span class="legend-color" style="background: #f59e0b;"></span>
+        <span>AMBER — Review Needed</span>
+    </div>
+    <div class="legend-item">
+        <span class="legend-color" style="background: #22c55e;"></span>
+        <span>GREEN — Clear</span>
+    </div>
+    <div class="legend-stats">
+        <span id="heatmapStats">Loading...</span>
+    </div>
+</div>
+
+<!-- Breadcrumb for drill-down -->
+<div class="heatmap-breadcrumb" id="heatmapBreadcrumb">
+    <span class="breadcrumb-item active" onclick="zoomToRoot()">Root</span>
+</div>
+
+<!-- Heatmap Container -->
+<div class="heatmap-wrapper">
+    <div id="heatmapChart" class="heatmap-chart"></div>
+</div>
+
+<!-- Tooltip -->
+<div id="heatmapTooltip" class="heatmap-tooltip"></div>
+
+<!-- File Detail Panel -->
+<div class="heatmap-detail-panel" id="detailPanel" style="display: none;">
+    <div class="detail-panel-header">
+        <h3 id="detailFileName">—</h3>
+        <button onclick="closeDetailPanel()" class="detail-close">&times;</button>
+    </div>
+    <div class="detail-panel-body">
+        <div class="detail-row">
+            <span class="detail-label">Threat Level</span>
+            <span class="detail-value" id="detailThreat">—</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">File Type</span>
+            <span class="detail-value" id="detailType">—</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">File Size</span>
+            <span class="detail-value" id="detailSize">—</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Flags</span>
+            <span class="detail-value" id="detailFlags">—</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">SHA-256</span>
+            <span class="detail-value mono" id="detailHash">—</span>
+        </div>
+        <div class="detail-row full-width">
+            <span class="detail-label">AI Analysis</span>
+            <p class="detail-analysis" id="detailAnalysis">—</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CASE_ID = '{{ case.id }}';
+let rawData = null;
+let currentRoot = null;
+
+// Color scales
+const threatColors = {
+    'RED': '#ef4444',
+    'AMBER': '#f59e0b', 
+    'GREEN': '#22c55e',
+};
+
+const threatColorsDim = {
+    'RED': 'rgba(239, 68, 68, 0.7)',
+    'AMBER': 'rgba(245, 158, 11, 0.7)',
+    'GREEN': 'rgba(34, 197, 94, 0.5)',
+};
+
+// Fetch data and render
+fetch(`/api/case/${CASE_ID}/heatmap-data`)
+    .then(res => res.json())
+    .then(data => {
+        rawData = data;
+        renderTreemap(data);
+        updateStats(data);
+    })
+    .catch(err => {
+        console.error('Error loading heatmap data:', err);
+        document.getElementById('heatmapChart').innerHTML = 
+            '<div class="empty-state"><h3>Could not load heatmap data</h3><p>Please ensure the scan is completed.</p></div>';
+    });
+
+function renderTreemap(data) {
+    const container = document.getElementById('heatmapChart');
+    container.innerHTML = '';
+    
+    const width = container.clientWidth;
+    const height = Math.max(500, window.innerHeight - 320);
+    
+    // Create hierarchy
+    const root = d3.hierarchy(data)
+        .sum(d => d.size || 1)
+        .sort((a, b) => b.value - a.value);
+    
+    currentRoot = root;
+    renderNode(root, width, height);
+}
+
+function renderNode(rootNode, width, height) {
+    const container = document.getElementById('heatmapChart');
+    if (!rootNode || !rootNode.data) {
+        container.innerHTML = '<div class="empty-state"><h3>No data available</h3><p>Run a scan to see the heatmap.</p></div>';
+        return;
+    }
+    container.innerHTML = '';
+    
+    try {
+        d3.treemap()
+            .size([width, height])
+            .paddingOuter(3)
+            .paddingTop(22)
+            .paddingInner(2)
+            .round(true)(rootNode);
+    } catch (e) {
+        console.error("Treemap layout error:", e);
+        container.innerHTML = '<div class="empty-state"><h3>Layout Error</h3><p>Could not generate tree structure.</p></div>';
+        return;
+    }
+    
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', `0 0 ${width} ${height}`);
+    
+    const colorBy = document.getElementById('heatmapColorBy').value;
+    const filter = document.getElementById('heatmapFilter').value;
+    
+    // Color scale for file types
+    const typeColorScale = d3.scaleOrdinal(d3.schemeTableau10);
+    
+    // Pre-calculate max size for scaleLog (ensure it's at least 2 to avoid log(1) issues)
+    const maxFileSize = d3.max(rootNode.leaves(), d => d.data.size || 1) || 1024;
+    const sizeScale = d3.scaleLog()
+        .domain([1, Math.max(2, maxFileSize)])
+        .range(['#1e293b', '#00d4ff']);
+
+    const nodes = rootNode.descendants().filter(d => d !== rootNode);
+    
+    const groups = svg.selectAll('g')
+        .data(nodes)
+        .join('g')
+        .attr('transform', d => `translate(${d.x0},${d.y0})`);
+    
+    // Rectangles
+    groups.append('rect')
+        .attr('width', d => Math.max(0, d.x1 - d.x0))
+        .attr('height', d => Math.max(0, d.y1 - d.y0))
+        .attr('rx', 3)
+        .attr('fill', d => {
+            if (d.children) return 'rgba(26, 31, 53, 0.8)';
+            
+            // Apply filter
+            if (filter !== 'all' && d.data.classification !== filter) return 'rgba(26, 31, 53, 0.1)';
+            
+            if (colorBy === 'size') {
+                return sizeScale(Math.max(1, d.data.size || 1));
+            } else if (colorBy === 'type') {
+                return typeColorScale(d.data.type || 'unknown');
+            } else {
+                return threatColorsDim[d.data.classification] || threatColorsDim['GREEN'];
+            }
+        })
+        .attr('stroke', d => {
+            if (d.children) return 'rgba(255,255,255,0.1)';
+            return threatColors[d.data.classification] || '#22c55e';
+        })
+        .attr('stroke-width', d => d.children ? 1 : 0.5)
+        .style('cursor', 'pointer')
+        .on('mouseover', function(event, d) {
+            if (!d.children) {
+                d3.select(this).attr('stroke-width', 2);
+                showTooltip(event, d);
+            }
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseout', function(event, d) {
+            if (!d.children) d3.select(this).attr('stroke-width', 0.5);
+            hideTooltip();
+        })
+        .on('click', function(event, d) {
+            if (d.children) zoomTo(d);
+            else showDetailPanel(d.data);
+        });
+    
+    // Labels for directories
+    groups.filter(d => d.children)
+        .append('text')
+        .attr('x', 6)
+        .attr('y', 15)
+        .text(d => {
+            const w = d.x1 - d.x0;
+            return w > 40 ? d.data.name : '';
+        })
+        .attr('fill', 'rgba(255,255,255,0.5)')
+        .attr('font-size', '10px')
+        .style('pointer-events', 'none');
+    
+    // Labels for files
+    groups.filter(d => !d.children)
+        .append('text')
+        .attr('x', 4)
+        .attr('y', 14)
+        .text(d => {
+            const w = d.x1 - d.x0;
+            const h = d.y1 - d.y0;
+            if (w < 40 || h < 20) return '';
+            return d.data.name;
+        })
+        .attr('fill', 'white')
+        .attr('font-size', '9px')
+        .style('pointer-events', 'none')
+        .each(function(d) {
+            // Truncate text if too long
+            const self = d3.select(this);
+            let textLength = self.node().getComputedTextLength();
+            let text = self.text();
+            while (textLength > (d.x1 - d.x0 - 8) && text.length > 0) {
+                text = text.slice(0, -1);
+                self.text(text + '...');
+                textLength = self.node().getComputedTextLength();
+            }
+        });
+
+    // Pulsing glow for RED items
+    groups.filter(d => !d.children && d.data.classification === 'RED')
+        .append('rect')
+        .attr('width', d => Math.max(0, d.x1 - d.x0))
+        .attr('height', d => Math.max(0, d.y1 - d.y0))
+        .attr('rx', 3)
+        .attr('fill', 'none')
+        .attr('stroke', '#ef4444')
+        .attr('stroke-width', 1.5)
+        .attr('class', 'pulse-glow')
+        .style('pointer-events', 'none');
+}
+
+function zoomTo(d) {
+    const container = document.getElementById('heatmapChart');
+    const width = container.clientWidth;
+    const height = Math.max(500, window.innerHeight - 320);
+    
+    currentRoot = d;
+    updateBreadcrumb(d);
+    renderNode(d, width, height);
+}
+
+function zoomToRoot() {
+    if (rawData) {
+        renderTreemap(rawData);
+        updateBreadcrumb(currentRoot);
+    }
+}
+
+function updateBreadcrumb(d) {
+    const path = [];
+    let node = d;
+    while (node) {
+        path.unshift(node);
+        node = node.parent;
+    }
+    
+    const bc = document.getElementById('heatmapBreadcrumb');
+    bc.innerHTML = '';
+    
+    path.forEach((p, i) => {
+        const span = document.createElement('span');
+        span.className = i === path.length - 1 ? 'breadcrumb-item active' : 'breadcrumb-item';
+        span.textContent = p.data.name || 'Root';
+        if (i < path.length - 1) {
+            span.onclick = () => zoomTo(p);
+        }
+        bc.appendChild(span);
+        
+        if (i < path.length - 1) {
+            const sep = document.createElement('span');
+            sep.className = 'breadcrumb-sep';
+            sep.textContent = ' / ';
+            bc.appendChild(sep);
+        }
+    });
+}
+
+function updateVisualization() {
+    if (currentRoot) {
+        const container = document.getElementById('heatmapChart');
+        renderNode(currentRoot, container.clientWidth, Math.max(500, window.innerHeight - 320));
+    }
+}
+
+function filterVisualization() {
+    updateVisualization();
+}
+
+function formatSize(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+    if (rawData) renderTreemap(rawData);
+});
+</script>
+{% endblock %}

@@ -35,7 +35,10 @@
     {% for item in evidence %}
     <div class="evidence-card rag-border-{{ item.classification | lower }}">
         <div class="evidence-header">
-            <span class="rag-badge rag-{{ item.classification | lower }}">{{ item.classification }}</span>
+            <span class="rag-badge rag-{{ item.classification | lower }}" 
+                  data-tooltip="{% if item.classification == 'RED' %}Immediate threat or critical artifact detected{% elif item.classification == 'AMBER' %}Suspicious item requiring manual review{% else %}Safe or common system file{% endif %}">
+                {{ item.classification }}
+            </span>
             <span class="confidence-badge">{{ ((item.confidence_score or 0) * 100)|int }}% confidence</span>
         </div>
         <div class="evidence-body">

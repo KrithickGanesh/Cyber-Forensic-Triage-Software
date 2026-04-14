@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Officer Login — CyberTriage{% endblock %}
+{% block page_title %}Secure Login{% endblock %}
+{% block page_subtitle %}Authorized Forensic Personnel Only{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="fas fa-shield-alt"></i>
+            <h2>Forensic Portal</h2>
+        </div>
+        
+        <form method="POST" action="{{ url_for('login') }}" class="auth-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Enter your username" required autofocus>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>New officer? <a href="{{ url_for('register') }}">Register Account</a></p>
+        </div>
+    </div>
+</div>
+
+<style>
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+}
+.auth-card {
+    background: var(--card-bg);
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    width: 100%;
+    max-width: 400px;
+    border: 1px solid var(--border-color);
+}
+.auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+.auth-header i {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+.auth-header h2 {
+    font-size: 1.5rem;
+    color: var(--text-bright);
+}
+.auth-form .form-group {
+    margin-bottom: 1.5rem;
+}
+.auth-form label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-dim);
+}
+.auth-form input {
+    width: 100%;
+    padding: 0.8rem;
+    background: #1a1a1a;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: white;
+}
+.auth-footer {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+.auth-footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.btn-block {
+    width: 100%;
+    padding: 0.8rem;
+}
+</style>
+{% endblock %}

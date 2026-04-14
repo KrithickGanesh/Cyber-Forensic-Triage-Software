@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}AI Interrogator — {{ case.case_name }}{% endblock %}
+{% block page_title %}AI Case Interrogator{% endblock %}
+{% block page_subtitle %}Case {{ case.id }} · Conversational Evidence Analysis{% endblock %}
+
+{% block content %}
+<div class="chat-viewport">
+    <div class="chat-sidebar">
+        <div class="sidebar-section">
+            <h3 class="section-title">Suggested Questions</h3>
+            <div class="suggested-list">
+                {% for q in suggested_questions %}
+                <button class="suggested-btn" onclick="setQuestion('{{ q }}')">
+                    <i class="fas fa-search-plus"></i> {{ q }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="sidebar-section mt-auto">
+            <h3 class="section-title"><i class="fas fa-lightbulb"></i> Forensic Tips</h3>
+            <ul class="tips-list">
+                <li>Ask to "summarize RED threats"</li>
+                <li>Ask about "timeline anomalies"</li>
+                <li>Inquire about specific extensions</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="chat-main">
+        <div id="chatMessages" class="chat-history">
+            <!-- Initial Greeting -->
+            <div class="msg-row assistant">
+                <div class="msg-avatar"><i class="fas fa-robot"></i></div>
+                <div class="msg-bubble">
+                    <div class="msg-header">Forensic AI Assistant</div>
+                    <div class="msg-text">
+                        Hello, I am your Forensic AI Assistant. I have analyzed <strong>{{ case.total_files }}</strong> files from this case. 
+                        I found <strong>{{ case.red_count }} RED</strong> high-priority threats. How can I help you with your investigation today?
+                    </div>
+                </div>
+            </div>
+
+            <!-- Persistent History from DB -->
+            {% for msg in chat_history %}
+            <div class="msg-row {{ 'user' if msg.role == 'user' else 'assistant' }}">
+                <div class="msg-avatar">
+                    <i class="fas fa-{{ 'user-shield' if msg.role == 'user' else 'robot' }}"></i>
+                </div>
+                <div class="msg-bubble">
+                    <div class="msg-header">{{ 'Investigator' if msg.role == 'user' else 'Forensic AI Assistant' }}</div>
+                    <div class="msg-text">{{ msg.content | safe }}</div>
+                    <div class="msg-footer">{{ msg.timestamp | format_datetime }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Floating Thinking Indicator -->
+        <div id="thinkingIndicator" class="thinking-wrapper hidden">
+            <div class="typing-indicator">
+                <span></span><span></span><span></span>
+            </div>
+            <small>AI is analyzing evidence...</small>
+        </div>
+
+        <div class="chat-input-container">
+            <form id="chatForm" class="chat-input-form">
+                <input type="text" id="chatInput" placeholder="Ask a question about this evidence..." required autocomplete="off">
+                <button type="submit" id="sendBtn" class="send-btn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+            <div class="chat-hint">AI may produce inaccuracies. Always verify critical forensic findings.</div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ─── Layout ─── */
+.chat-viewport {
+    display: flex;
+    height: calc(100vh - 160px); /* Adjust based on topbar height */
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ─── Sidebar ─── */
+.chat-sidebar {
+    width: 280px;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid var(--border-strong);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+}
+.sidebar-section { margin-bottom: 2rem; }
+.section-title { 
+    font-size: 0.8rem; 
+    text-transform: uppercase; 
+    letter-spacing: 0.05em; 
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.suggested-list { display: flex; flex-direction: column; gap: 8px; }
+.suggested-btn {
+    text-align: left;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.suggested-btn:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    transform: translateX(4px);
+}
+.tips-list { padding-left: 1.2rem; color: var(--text-muted); font-size: 0.8rem; }
+.tips-list li { margin-bottom: 8px; }
+.mt-auto { margin-top: auto; }
+
+/* ─── Main Chat ─── */
+.chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-input);
+    position: relative;
+}
+.chat-history {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    scroll-behavior: smooth;
+}
+
+/* ─── Message Bubbles ─── */
+.msg-row { display: flex; gap: 1rem; max-width: 85%; }
+.msg-row.assistant { align-self: flex-start; }
+.msg-row.user { align-self: flex-end; flex-direction: row-reverse; }
+
+.msg-avatar {
+    width: 36px;
+    height: 36px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+.assistant .msg-avatar { color: var(--accent-primary); border-color: var(--accent-primary); }
+.user .msg-avatar { color: var(--green); border-color: var(--green); }
+
+.msg-bubble {
+    padding: 1rem 1.25rem;
+    border-radius: 14px;
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+.assistant .msg-bubble { border-bottom-left-radius: 2px; }
+.user .msg-bubble { border-bottom-right-radius: 2px; background: rgba(34, 197, 94, 0.05); border-color: var(--green-border); }
+
+.msg-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+.assistant .msg-header { color: var(--accent-primary); }
+.user .msg-header { color: var(--green); }
+
+.msg-text { font-size: 0.92rem; line-height: 1.6; color: var(--text-primary); }
+.msg-text strong { color: var(--text-heading); }
+.msg-footer { font-size: 0.65rem; color: var(--text-muted); margin-top: 0.6rem; text-align: right; }
+
+/* ─── Thinking Indicator ─── */
+.thinking-wrapper {
+    position: absolute;
+    bottom: 100px;
+    left: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-card);
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-md);
+    z-index: 10;
+}
+.typing-indicator { display: flex; gap: 4px; }
+.typing-indicator span {
+    width: 6px; height: 6px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    animation: typingBounce 1.4s infinite ease-in-out both;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+.thinking-wrapper small { color: var(--text-muted); font-size: 0.75rem; }
+
+@keyframes typingBounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1.0); }
+}
+
+/* ─── Input Area ─── */
+.chat-input-container {
+    padding: 1.5rem 2rem;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-strong);
+}
+.chat-input-form { display: flex; gap: 12px; }
+.chat-input-form input {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    padding: 0.85rem 1.25rem;
+    border-radius: 12px;
+    color: white;
+    font-size: 0.95rem;
+    outline: none;
+    transition: var(--transition);
+}
+.chat-input-form input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-glow); }
+.send-btn {
+    width: 48px; height: 48px;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.send-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+.chat-hint { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 10px; }
+
+.hidden { display: none !important; }
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ─── Scrollbar ─── */
+.chat-history::-webkit-scrollbar { width: 6px; }
+.chat-history::-webkit-scrollbar-track { background: transparent; }
+.chat-history::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatForm = document.getElementById('chatForm');
+const chatInput = document.getElementById('chatInput');
+const chatMessages = document.getElementById('chatMessages');
+const thinkingIndicator = document.getElementById('thinkingIndicator');
+const caseId = '{{ case.id }}';
+
+let conversationHistory = [
+    {% for msg in chat_history %}
+    { role: "{{ msg.role }}", content: "{{ msg.content | replace('"', '\\"') | replace('\n', ' ') }}" },
+    {% endfor %}
+];
+
+function setQuestion(q) {
+    chatInput.value = q;
+    chatInput.focus();
+}
+
+chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const question = chatInput.value.trim();
+    if (!question) return;
+
+    appendMessage('Investigator', question, 'user');
+    chatInput.value = '';
+    
+    thinkingIndicator.classList.remove('hidden');
+    scrollToBottom();
+
+    try {
+        const response = await fetch(`/api/case/${caseId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: question,
+                history: conversationHistory
+            })
+        });
+
+        const data = await response.json();
+        thinkingIndicator.classList.add('hidden');
+
+        if (data.success) {
+            appendMessage('Forensic AI Assistant', data.response, 'assistant');
+            conversationHistory.push({ role: 'user', content: question });
+            conversationHistory.push({ role: 'assistant', content: data.response });
+        } else {
+            appendMessage('System Error', data.response || 'An error occurred.', 'assistant');
+        }
+    } catch (err) {
+        thinkingIndicator.classList.add('hidden');
+        appendMessage('System Error', 'Failed to connect to AI service.', 'assistant');
+    }
+});
+
+function appendMessage(role, content, type) {
+    const row = document.createElement('div');
+    row.className = `msg-row ${type} fade-in`;
+    
+    const icon = type === 'user' ? 'user-shield' : 'robot';
+    
+    row.innerHTML = `
+        <div class="msg-avatar"><i class="fas fa-${icon}"></i></div>
+        <div class="msg-bubble">
+            <div class="msg-header">${role}</div>
+            <div class="msg-text">${formatContent(content)}</div>
+            <div class="msg-footer">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(row);
+    scrollToBottom();
+}
+
+function formatContent(text) {
+    return text
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
+function scrollToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Initial scroll
+window.onload = () => {
+    setTimeout(scrollToBottom, 100);
+};
+</script>
+{% endblock %}

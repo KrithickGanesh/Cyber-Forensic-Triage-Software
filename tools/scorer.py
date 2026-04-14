@@ -127,6 +127,12 @@ def classify_file(file_info, virustotal_result=None):
                 score += 20
                 flags.append('virustotal_suspect')
     
+    # 8. Dark web indicators (0-35 points)
+    if 'darkweb_indicator' in flags or 'tor_artifact' in flags:
+        score += 35
+        if 'darkweb_indicator' not in flags:
+            flags.append('darkweb_indicator')
+    
     # Normalize score to 0-100
     score = min(score, 100)
     
